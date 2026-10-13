@@ -12,16 +12,11 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Fetch full source
-        run: |
-          curl -fsSL -o k.zip "https://raw.githubusercontent.com/drfccv/android_kernel_xiaomi_sm8350_drfccv/main/anykernel3/kernel-5.4.302.zip"
-          mkdir kernel
-          unzip -q -o k.zip -d kernel
-          TOP=$(find kernel -maxdepth 2 -name Makefile -type f | head -1)
-          ROOT=$(dirname "$TOP")
-          shopt -s dotglob
-          mv "$ROOT"/* .
-          head -5 Makefile
+      - uses: actions/checkout@v4
+        with:
+          repository: ikun-1145141/android_kernel_xiaomi_sm8350_star
+          ref: main
+          submodules: recursive
 
       - name: Fetch device config
         run: curl -fsSL -o kernel.config https://raw.githubusercontent.com/xinyu-candy/android_kernel_xiaomi_sm8350_star/venus-5.10bpf/kernel.config
