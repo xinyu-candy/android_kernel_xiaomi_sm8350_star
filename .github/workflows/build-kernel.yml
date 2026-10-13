@@ -19,6 +19,11 @@ jobs:
           submodules: recursive
 
       - name: Fetch device config
+      - name: Patch vendorized const vm_fault
+        run: |
+          sed -i 's/const struct {/struct {/' include/linux/mm.h
+          grep -n 'Target VMA' include/linux/mm.h
+          
         run: curl -fsSL -o kernel.config https://raw.githubusercontent.com/xinyu-candy/android_kernel_xiaomi_sm8350_star/venus-5.10bpf/kernel.config
 
       - name: Show kernel version
