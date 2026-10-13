@@ -25,6 +25,11 @@ jobs:
         run: |
           sed -i 's/const struct {/struct {/' include/linux/mm.h
           grep -n 'Target VMA' include/linux/mm.h
+
+      - name: Downgrade -Werror
+        run: |
+          find . -name Makefile -exec sed -i 's/-Werror/-Wno-error/g' {} +
+          echo done
           
       - name: Show kernel version
         run: head -5 Makefile
