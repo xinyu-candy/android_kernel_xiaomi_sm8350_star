@@ -26,8 +26,8 @@ jobs:
       - name: Install deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y curl wget git build-essential flex bison libssl-dev libelf-dev bc squashfs-tools zstd xz-utils
-          sudo apt-get install -y python3-dev
+          sudo apt-get install -y curl wget git build-essential gcc-aarch64-linux-gnu \
+            flex bison libssl-dev libelf-dev bc squashfs-tools zstd xz-utils python3-dev
 
       - name: Configure with device config + BTF
         run: |
