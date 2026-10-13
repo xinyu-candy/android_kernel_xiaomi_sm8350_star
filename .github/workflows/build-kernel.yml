@@ -31,6 +31,8 @@ jobs:
 
       - name: Configure with device config + BTF
         run: |
+          aarch64-linux-gnu-gcc --version || sudo apt-get install -y gcc-aarch64-linux-gnu
+          aarch64-linux-gnu-gcc --version
           cp kernel.config .config
           for c in CONFIG_DEBUG_INFO CONFIG_DEBUG_INFO_BTF; do
             grep -q "^${c}=" .config || sed -i "s|^# ${c} is not set|^${c}=y|" .config
