@@ -15,27 +15,27 @@ jobs:
     steps:
       - name: Install build dependencies
         run: |
-        apt-get update
-        DEBIAN_FRONTEND=noninteractive apt-get install -y \
-          flex bison \
-          build-essential \
-          gcc-aarch64-linux-gnu \
-          libelf-dev \
-          libssl-dev \
-          libdw-dev \
-          cpio \
-          git \
-          curl \
-          ca-certificates \
-          python3 \
-          pkg-config \
-          zlib1g-dev \
-          binutils-aarch64-linux-gnu \
-          cmake
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            flex bison \
+            build-essential \
+            gcc-aarch64-linux-gnu \
+            libelf-dev \
+            libssl-dev \
+            libdw-dev \
+            cpio \
+            git \
+            curl \
+            ca-certificates \
+            python3 \
+            pkg-config \
+            zlib1g-dev \
+            binutils-aarch64-linux-gnu \
+            cmake
 
-      - name: Build pahole v1.21
+      - name: Build pahole v1.20
         run: |
-          git clone -b v1.21 --depth=1 https://github.com/acmel/dwarves.git /tmp/dwarves
+          git clone -b v1.20 --depth=1 https://github.com/acmel/dwarves.git /tmp/dwarves
           cd /tmp/dwarves
           mkdir build && cd build
           cmake -DCMAKE_INSTALL_PREFIX=/usr/local ..
@@ -66,7 +66,6 @@ jobs:
           ./scripts/config -d CONFIG_DEBUG_INFO_SPLIT
           ./scripts/config -d CONFIG_DEBUG_INFO_COMPRESSED
           
-          # 同时禁止 FTRACE，避免 recordmcount 问题
           ./scripts/config -d CONFIG_FTRACE
           ./scripts/config -d CONFIG_FUNCTION_TRACER
           
