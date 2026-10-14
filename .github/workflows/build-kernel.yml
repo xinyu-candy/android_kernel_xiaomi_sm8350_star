@@ -56,12 +56,11 @@ jobs:
           cp kernel.config .config
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
 
-          # 关 BTF，编译阶段不生成 BTF
+          # 关 BTF
           scripts/config -d CONFIG_DEBUG_INFO_BTF
 
-          # 用 DWARF5（对交叉编译更友好）
-          scripts/config -d CONFIG_DEBUG_INFO_DWARF4
-          scripts/config -e CONFIG_DEBUG_INFO_DWARF5
+          # DWARF4（内核不支持 DWARF5）
+          scripts/config -e CONFIG_DEBUG_INFO_DWARF4
 
           scripts/config -e CONFIG_DEBUG_INFO
           scripts/config -d CONFIG_DEBUG_INFO_REDUCED
@@ -75,9 +74,6 @@ jobs:
 
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
 
-          echo "=== Final BTF config ==="
-          grep -E "CONFIG_DEBUG_INFO|CONFIG_DEBUG_INFO_BTF|CONFIG_DEBUG_INFO_DWARF" .config
-
       - name: Build kernel
         run: |
           cd kernel
@@ -90,19 +86,21 @@ jobs:
           cd kernel
           echo "=== pahole version ==="
           pahole --version
+          echo "=== checking vmlinux ==="
+          file vmlinux
+          ls -lh vmlinux
           echo "=== Extracting BTF ==="
           pahole --btf_encode_detached vmlinux.btf vmlinux 2>&1 || {
-            echo "BTF encode failed, trying with --force..."
-            pahole --btf_encode_detached --force vmlinux.btf vmlinux 2>&1
+            echo "BTF encode failed, but kernel compiled OK"
+            echo "You can extract BTF locally with: pahole --btf_encode_detached vmlinux.btf vmlinux"
           }
-          ls -lh vmlinux.btf 2>/dev/null && echo "BTF OK!" || echo "BTF failed, continuing..."
+          ls -lh vmlinux.btf 2>/dev/null && echo "BTF OK!" || echo "No BTF (non-fatal)"
 
       - name: Verify
         run: |
           cd kernel
           echo "=== Image ===" && ls -lh arch/arm64/boot/Image
           echo "=== vmlinux ===" && ls -lh vmlinux
-          echo "=== vmlinux.btf ===" && ls -lh vmlinux.btf 2>/dev/null || echo "No BTF file"
 
       - name: Upload Image
         uses: actions/upload-artifact@v4
@@ -120,7 +118,6 @@ jobs:
 
       - name: Upload BTF
         uses: actions/upload-artifact@v4
-        if: success()
         with:
           name: kernel-btf
           path: kernel/vmlinux.btf
