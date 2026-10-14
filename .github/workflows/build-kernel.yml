@@ -21,11 +21,6 @@ jobs:
             binutils-aarch64-linux-gnu \
             pahole
 
-      - name: Verify pahole
-        run: |
-          pahole --version
-          which pahole
-
       - name: Clone kernel source
         run: |
           git clone --depth=1 -b main https://github.com/ikun-1145141/android_kernel_xiaomi_sm8350_star.git kernel
@@ -41,16 +36,10 @@ jobs:
           cp kernel.config .config
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
 
-          # 关掉 vendor 宏（会干扰编译）
           ./scripts/config -d CONFIG_VENDOR_QTI_KERNEL
           ./scripts/config -d CONFIG_VENDOR_QCOM_KERNEL
           ./scripts/config -d CONFIG_VENDOR_XIAOMI_KERNEL
 
-          # 关掉小米触屏驱动（代码有 bug）
-          ./scripts/config -d CONFIG_TOUCHSCREEN_XIAOMI_SDM870
-          ./scripts/config -d CONFIG_TOUCHSCREEN_FT8756
-
-          # 开 BTF 需要的选项
           ./scripts/config -e CONFIG_DEBUG_INFO
           ./scripts/config -e CONFIG_DEBUG_INFO_DWARF4
           ./scripts/config -e CONFIG_DEBUG_INFO_BTF
@@ -59,6 +48,9 @@ jobs:
           ./scripts/config -d CONFIG_DEBUG_INFO_COMPRESSED
           ./scripts/config -d CONFIG_FTRACE
           ./scripts/config -d CONFIG_FUNCTION_TRACER
+
+          # 🔑 修触屏驱动 bug
+          ./scripts/config -e CONFIG_TOUCHSCREEN_XIAOMI_SDM870_TOUCH_UPGRADE_FIRMWARE
 
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
 
@@ -72,12 +64,9 @@ jobs:
       - name: Verify output
         run: |
           cd kernel
-          echo "=== Image ==="
           ls -lh arch/arm64/boot/Image
-          echo "=== vmlinux ==="
           ls -lh vmlinux
-          echo "=== DTBs ==="
-          find arch/arm64/boot/dts -name "*.dtb" | head -20
+          file vmlinux
 
       - name: Upload Image
         uses: actions/upload-artifact@v4
