@@ -41,9 +41,16 @@ jobs:
           cp kernel.config .config
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
 
+          # 关掉 vendor 宏（会干扰编译）
           ./scripts/config -d CONFIG_VENDOR_QTI_KERNEL
           ./scripts/config -d CONFIG_VENDOR_QCOM_KERNEL
           ./scripts/config -d CONFIG_VENDOR_XIAOMI_KERNEL
+
+          # 关掉小米触屏驱动（代码有 bug）
+          ./scripts/config -d CONFIG_TOUCHSCREEN_XIAOMI_SDM870
+          ./scripts/config -d CONFIG_TOUCHSCREEN_FT8756
+
+          # 开 BTF 需要的选项
           ./scripts/config -e CONFIG_DEBUG_INFO
           ./scripts/config -e CONFIG_DEBUG_INFO_DWARF4
           ./scripts/config -e CONFIG_DEBUG_INFO_BTF
