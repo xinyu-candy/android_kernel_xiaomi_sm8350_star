@@ -13,7 +13,7 @@ jobs:
       image: ubuntu:20.04
 
     steps:
-      - name: Install build dependencies (Ubuntu 20.04)
+      - name: Install build dependencies
         run: |
           apt-get update
           DEBIAN_FRONTEND=noninteractive apt-get install -y \
@@ -36,13 +36,9 @@ jobs:
           pahole --version
           which pahole
 
-      - name: Get kernel source
-        uses: actions/checkout@v4
-        with:
-          repository: ikun-1145141/android_kernel_xiaomi_sm8350_star
-          ref: main
-          path: kernel
-          fetch-depth: 1
+      - name: Clone kernel source
+        run: |
+          git clone --depth=1 -b main https://github.com/ikun-1145141/android_kernel_xiaomi_sm8350_star.git kernel
 
       - name: Fetch device kernel config
         run: |
