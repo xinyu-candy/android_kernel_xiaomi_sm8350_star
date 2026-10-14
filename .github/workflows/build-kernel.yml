@@ -18,20 +18,13 @@ jobs:
             flex bison build-essential gcc-aarch64-linux-gnu \
             libelf-dev libssl-dev libdw-dev cpio git curl \
             ca-certificates python3 pkg-config zlib1g-dev \
-            binutils-aarch64-linux-gnu cmake
+            binutils-aarch64-linux-gnu \
+            dwarves
 
-      - name: Build pahole (static linked)
+      - name: Check pahole
         run: |
-          git clone -b v1.20 --depth=1 https://github.com/acmel/dwarves.git /tmp/dwarves
-          cd /tmp/dwarves
-          mkdir build && cd build
-          cmake -DCMAKE_INSTALL_PREFIX=/usr/local \
-                -DBUILD_SHARED_LIBS=OFF \
-                -DCMAKE_EXE_LINKER_FLAGS="-static" \
-                ..
-          make -j$(nproc)
-          sudo make install
-          /usr/local/bin/pahole --version
+          pahole --version
+          which pahole
 
       - name: Clone kernel source
         run: |
@@ -47,7 +40,7 @@ jobs:
           cd kernel
           cp kernel.config .config
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
-          
+
           ./scripts/config -d CONFIG_VENDOR_QTI_KERNEL
           ./scripts/config -d CONFIG_VENDOR_QCOM_KERNEL
           ./scripts/config -d CONFIG_VENDOR_XIAOMI_KERNEL
@@ -59,7 +52,7 @@ jobs:
           ./scripts/config -d CONFIG_DEBUG_INFO_COMPRESSED
           ./scripts/config -d CONFIG_FTRACE
           ./scripts/config -d CONFIG_FUNCTION_TRACER
-          
+
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
 
       - name: Build kernel
@@ -67,7 +60,6 @@ jobs:
           cd kernel
           export CROSS_COMPILE=aarch64-linux-gnu-
           export ARCH=arm64
-          export PATH=/usr/local/bin:$PATH
           make -j$(nproc) Image dtbs 2>&1 | tail -300
 
       - name: Verify output
