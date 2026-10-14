@@ -56,8 +56,11 @@ jobs:
       - name: Apply config and enable BTF
         run: |
           cd kernel
-          # Clean vendor configs to avoid merge interference
-          find vendor -name "*.config" -delete 2>/dev/null || true
+          # 删除所有 vendor 子目录的 Kbuild/Makefile 干扰
+          find vendor -type f \( -name "*.config" -o -name "Kbuild" -o -name "Makefile" \) -delete 2>/dev/null || true
+          # 彻底移除 vendor 下的技术目录，只保留头文件
+          find vendor -mindepth 1 -maxdepth 1 -type d -exec rm -rf {} + 2>/dev/null || true
+          
           cp kernel.config .config
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
           
@@ -79,7 +82,8 @@ jobs:
           echo "=== GCC ==="
           aarch64-linux-gnu-gcc --version | head -1
           cd kernel
-          grep -E 'CONFIG_DEBUG_INFO_BTF|CONFIG_FTRACE' .config
+          echo "=== Key configs ==="
+          grep -E 'CONFIG_DEBUG_INFO_BTF|CONFIG_FTRACE|CONFIG_VENDOR' .config || true
 
       - name: Build kernel (Image + dtbs)
         run: |
