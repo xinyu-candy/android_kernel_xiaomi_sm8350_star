@@ -30,20 +30,19 @@ jobs:
           cd kernel
           curl -fsSL -o kernel.config https://raw.githubusercontent.com/xinyu-candy/android_kernel_xiaomi_sm8350_star/venus-5.10bpf/kernel.config
 
-      - name: Fix touchscreen driver
+      - name: Fix touchscreen FT8756
         run: |
           cd kernel
-          # 暴力修复：找到所有引用了 FT8756_UPGRADE_FIRMWARE 的文件，在里面硬塞 define
-          grep -rl "FT8756_UPGRADE_FIRMWARE" drivers/input/touchscreen/ 2>/dev/null | while read f; do
-            echo "Patching: $f"
-            sed -i '1s/^/#define FT8756_UPGRADE_FIRMWARE 0\n/' "$f"
-          done
-          # 如果上面没找到，全局搜索
-          grep -rl "FT8756_UPGRADE_FIRMWARE" . 2>/dev/null | while read f; do
-            echo "Patching: $f"
-            sed -i '1s/^/#define FT8756_UPGRADE_FIRMWARE 0\n/' "$f"
-          done
-          echo "Patch done!"
+          # 找到所有引用 FT8756_UPGRADE_FIRMWARE 的文件
+          FILES=$(grep -rl "FT8756_UPGRADE_FIRMWARE" . 2>/dev/null)
+          if [ -n "$FILES" ]; then
+            for f in $FILES; do
+              echo "Patching: $f"
+              sed -i '1i #define FT8756_UPGRADE_FIRMWARE 0' "$f"
+            done
+          else
+            echo "FT8756_UPGRADE_FIRMWARE not referenced anywhere, safe to skip"
+          fi
 
       - name: Configure kernel
         run: |
@@ -51,10 +50,12 @@ jobs:
           cp kernel.config .config
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
 
-          ./scripts/config -d CONFIG_VENDOR_QTI_KERNEL
-          ./scripts/config -d CONFIG_VENDOR_QCOM_KERNEL
-          ./scripts/config -d CONFIG_VENDOR_XIAOMI_KERNEL
+          # 去掉不存在的 VENDOR config
+          ./scripts/config -d CONFIG_VENDOR_QCOM_KERNEL 2>/dev/null || true
+          ./scripts/config -d CONFIG_VENDOR_XIAOMI_KERNEL 2>/dev/null || true
+          ./scripts/config -d CONFIG_VENDOR_QTI_KERNEL 2>/dev/null || true
 
+          # BTF 核心配置
           ./scripts/config -e CONFIG_DEBUG_INFO
           ./scripts/config -e CONFIG_DEBUG_INFO_DWARF4
           ./scripts/config -e CONFIG_DEBUG_INFO_BTF
@@ -76,11 +77,14 @@ jobs:
       - name: Verify output
         run: |
           cd kernel
-          ls -lh arch/arm64/boot/Image
+          echo "=== Image ==="
+          ls -lh arch/arm64/boot/Image 2>/dev/null || echo "Image not found"
+          echo "=== vmlinux ==="
           ls -lh vmlinux 2>/dev/null || echo "vmlinux not found"
           file vmlinux 2>/dev/null || true
 
       - name: Upload Image
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: kernel-image
@@ -88,6 +92,7 @@ jobs:
           retention-days: 7
 
       - name: Upload vmlinux
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: kernel-vmlinux
@@ -95,6 +100,7 @@ jobs:
           retention-days: 7
 
       - name: Upload DTBs
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: kernel-dtbs
