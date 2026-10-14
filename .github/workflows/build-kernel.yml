@@ -3,6 +3,9 @@ name: build-kernel-btf
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 env:
   CMDLINE: cgroup_disable=pressure mitigations=off log_buf_len=256K rcupdate.rcu_expedited=1 rcu_nocbs=0-7 kpti=off console=ttyMSM0,115200n8 androidboot.hardware=qcom androidboot.console=ttyMSM0 androidboot.memcg=1 lpm_levels.sleep_disabled=1 video=vfb640x400,bpp=32,memsize=3072000 msm_rtb.filter=0x237 service_locator.enable=1 androidboot.usbcontroller=a600000.dwc3 swiotlb=0 loop.max_part=7 cgroup.memory=nokmem,nosocket pcie_ports=compat loop.max_part=7 iptable_raw.raw_before_defrag=1 ip6table_raw.raw_before_defrag=1 buildvariant=user  androidboot.verifiedbootstate=orange androidboot.keymaster=1  androidboot.bootdevice=1d84000.ufshc androidboot.fstab_suffix=default androidboot.boot_devices=soc1d84000.ufshc androidboot.serialno=39b42caa bootinfo.pureason=0x40001 bootinfo.pdreason=0x2 androidboot.hwversion=2.9.1 androidboot.cpuid=0x631e644f androidboot.hwc=CN androidboot.hwlevel=MP androidboot.camera.config=0 hwid.hwid_value=589825 hwid.project=2 hwid.build_adc=57210 hwid.project_adc=29293 androidboot.hardware.sku=star androidboot.product.hardware.sku=star androidboot.secureboot=1 androidboot.baseband=msm msm_drm.dsi_display0=qcom,mdss_dsi_k2_38_08_0a_mp_dsc_cmd msm_drm.dsi_display1=qcom,mdss_dsi_k1_43_06_00_sec_video androidboot.oled_wp=01f50bb40c4e msm_drm.oled_wp=01f50bb40c4e androidboot.oled_panel_id=K2_0A_MP androidboot.ufsid=0x198 androidboot.slot_suffix=_a rootwait ro init=init androidboot.dtbo_idx=27 androidboot.dtb_idx=0 androidboot.ramdump=disable androidboot.force_normal_boot=1 block2mtd.block2mtd=devblocksda15,2097152 mtdoops.mtddev=0 mtdoops.record_size=2097152 mtdoops.dump_oops=0 printk.always_kmsg_dump=1
   KERNEL_BASE: "0x100000"
@@ -43,13 +46,24 @@ jobs:
           aarch64-linux-gnu-gcc --version || sudo apt-get install -y gcc-aarch64-linux-gnu
           aarch64-linux-gnu-gcc --version
           cp kernel.config .config
+          
           for c in CONFIG_DEBUG_INFO CONFIG_DEBUG_INFO_BTF; do
-            grep -q ^${c}= .config || sed -i "s/^# ${c} is not set/^${c}=y/" .config
+            if grep -q "^${c}=y" .config; then
+              echo "$c already enabled"
+            elif grep -q "^# ${c} is not set" .config; then
+              sed -i "s/^# ${c} is not set/${c}=y/" .config
+              echo "$c: changed from 'not set' to 'y'"
+            else
+              echo "${c}=y" >> .config
+              echo "$c: appended"
+            fi
           done
+          
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
+          grep -E 'CONFIG_DEBUG_INFO_BTF|CONFIG_DEBUG_INFO' .config || true
 
-      - name: Build Image
-        run: make -j$(nproc) ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- Image
+      - name: Build Image + DTBs
+        run: make -j$(nproc) ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- Image dtbs
 
       - name: Verify BTF present
         run: |
@@ -82,3 +96,10 @@ jobs:
           print('boot.img:', len(data), 'bytes; kernel:', len(kdata))
           PYEOF
           ls -lh boot.img
+
+      - name: Upload boot.img artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: boot-img-${{ github.run_number }}
+          path: boot.img
+          retention-days: 7
