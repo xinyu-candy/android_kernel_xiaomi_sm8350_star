@@ -20,9 +20,16 @@ jobs:
             ca-certificates python3 pkg-config zlib1g-dev \
             binutils-aarch64-linux-gnu cmake
 
+      - name: Setup swap (4GB)
+        run: |
+          sudo fallocate -l 4G /swapfile
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile
+          sudo swapon /swapfile
+          free -h
+
       - name: Build pahole from source
         run: |
-          # 先卸载系统自带的
           sudo apt-get remove -y pahole dwarves 2>/dev/null; true
           git clone --depth=1 https://git.kernel.org/pub/scm/devel/pahole/pahole.git
           cd pahole
@@ -31,10 +38,7 @@ jobs:
           make -j$(nproc)
           sudo make install
           sudo ldconfig
-          echo "=== pahole version ==="
           pahole --version
-          echo "=== pahole location ==="
-          which pahole
 
       - name: Clone kernel source
         run: |
@@ -70,9 +74,8 @@ jobs:
           cd kernel
           export CROSS_COMPILE=aarch64-linux-gnu-
           export ARCH=arm64
-          # 确认用的是新 pahole
-          echo "Using pahole: $(which pahole) ($(pahole --version))"
-          make -j$(nproc) Image dtbs 2>&1 | tail -300
+          # 编译用多线程，链接用单线程避免 OOM
+          make -j$(nproc) Image dtbs KBUILD_LDFLAGS_MODULE= LD="aarch64-linux-gnu-ld" 2>&1 | tail -300
 
       - name: Verify
         run: |
