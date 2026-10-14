@@ -29,27 +29,10 @@ jobs:
             libdw-dev \
             cmake \
             cpio \
-            git
-
-      - name: Remove old pahole and build latest from source
-        run: |
-          # 删掉系统自带的旧版
-          sudo apt-get remove -y dwarves || true
-          
-          # 从源码编译 v1.30+ 
-          git clone --depth=1 https://git.kernel.org/pub/scm/devel/pahole/pahole.git /tmp/pahole
-          cd /tmp/pahole
-          mkdir build && cd build
-          cmake -DCMAKE_INSTALL_PREFIX=/usr/local ..
-          make -j$(nproc)
-          sudo make install
-          
-          # 确保新版在 PATH 最前面
-          export PATH=/usr/local/bin:$PATH
-          echo 'export PATH=/usr/local/bin:$PATH' >> $GITHUB_ENV
-          
-          # 验证版本
-          pahole --version
+            git \
+            clang \
+            lld \
+            llvm
 
       - name: Get kernel source
         uses: actions/checkout@v4
@@ -74,50 +57,69 @@ jobs:
           echo "=== File size ==="
           ls -lh kernel.config
 
-      - name: Apply config and enable BTF
+      - name: Apply config and enable BTF with LLVM
         run: |
           cd kernel
           cp kernel.config .config
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
           
-          # 开启 BTF 相关
+          # 开启 BTF
           ./scripts/config -e CONFIG_DEBUG_INFO
           ./scripts/config -e CONFIG_DEBUG_INFO_DWARF4
           ./scripts/config -e CONFIG_DEBUG_INFO_BTF
           ./scripts/config -e CONFIG_DEBUG_INFO_REDUCED
           ./scripts/config -d CONFIG_DEBUG_INFO_SPLIT
           
+          # 关键：强制用 LLVM 工具链生成 BTF，而非 pahole
+          ./scripts/config -e CONFIG_PAHOLE_HAS_SPLIT_BTF
+          ./scripts/config -e CONFIG_PAHOLE_HAS_BTF_TAG
+          ./scripts/config -e CONFIG_DEBUG_INFO_BTF_MODULES
+          
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
 
-      - name: Verify pahole version and BTF config
+      - name: Verify config
         run: |
-          echo "=== pahole version ==="
-          pahole --version
-          echo "=== pahole path ==="
-          which pahole
-          echo "=== BTF settings ==="
           cd kernel
-          grep -E 'CONFIG_DEBUG_INFO|CONFIG_DEBUG_INFO_BTF' .config
+          grep -E 'CONFIG_DEBUG_INFO|CONFIG_DEBUG_INFO_BTF|CONFIG_PAHOLE' .config
 
-      - name: Build kernel
+      - name: Build kernel with LLVM
         run: |
           cd kernel
-          export PATH=/usr/local/bin:$PATH
-          make -j$(nproc) ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- Image dtbs
+          export LLVM=1
+          export LLVM_IAS=1
+          make -j$(nproc) \
+            ARCH=arm64 \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            LLVM=1 \
+            LLVM_IAS=1 \
+            Image dtbs
 
-      - name: Build modules
+      - name: Build modules with LLVM
         run: |
           cd kernel
-          export PATH=/usr/local/bin:$PATH
-          make -j$(nproc) ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- modules
+          export LLVM=1
+          export LLVM_IAS=1
+          make -j$(nproc) \
+            ARCH=arm64 \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            LLVM=1 \
+            LLVM_IAS=1 \
+            modules
 
       - name: Verify output
         run: |
           cd kernel
           echo "=== vmlinux ==="
           ls -lh vmlinux
+          file vmlinux
+          echo ""
+          echo "=== BTF check ==="
+          bpftool btf dump file vmlinux format raw 2>/dev/null | head -5 || echo "Checking with readelf..."
+          readelf -S vmlinux 2>/dev/null | grep -i btf || echo "BTF section not found via readelf"
+          echo ""
           echo "=== Image ==="
           ls -lh arch/arm64/boot/Image
+          echo ""
           echo "=== DTB ==="
           find arch/arm64/boot/dts -name "*.dtb" | head -20
 
