@@ -60,20 +60,13 @@ jobs:
 
       - name: Make boot.img
         run: |
-          MKB=""
-          for p in $(command -v mkbootimg 2>/dev/null) /usr/bin/mkbootimg; do [ -n "$MKB" ] && MKB=$p; done
-          if [ -z "$MKB" ]; then
-            echo "mkbootimg not found, trying android tools"
-            sudo apt-get install -y android-libtools || true
-            MKB=$(command -v mkbootimg 2>/dev/null || true)
-          fi
-          if [ -z "$MKB" ]; then
-            echo "FATAL: cannot find mkbootimg"
-            exit 1
-          fi
-          $MKB --kernel arch/arm64/boot/Image \
-            --cmdline "${CMDLINE}" \
-            --os_version 12 --os_patch_level 4 \
+          make -C tools/bootimg
+          ./tools/bootimg/mkbootimg \
+            --kernel arch/arm64/boot/Image \
+            --base "$KERNEL_BASE" \
+            --page_size "$PAGE_SIZE" \
+            --os_version 12 \
+            --cmdline "$CMDLINE" \
             -o boot.img
           ls -lh boot.img
 
