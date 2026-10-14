@@ -18,7 +18,19 @@ jobs:
             flex bison build-essential gcc-aarch64-linux-gnu \
             libelf-dev libssl-dev libdw-dev cpio git curl \
             ca-certificates python3 pkg-config zlib1g-dev \
-            binutils-aarch64-linux-gnu pahole
+            binutils-aarch64-linux-gnu cmake
+
+      - name: Build pahole from source
+        run: |
+          git clone --depth=1 https://git.kernel.org/pub/scm/devel/pahole/pahole.git
+          cd pahole
+          mkdir build && cd build
+          cmake -DCMAKE_INSTALL_PREFIX=/usr/local ..
+          make -j$(nproc)
+          sudo make install
+          sudo ldconfig
+          which pahole
+          pahole --version
 
       - name: Clone kernel source
         run: |
@@ -34,23 +46,20 @@ jobs:
           cd kernel
           cp kernel.config .config
 
-          # 关掉阻碍 BTF 的选项（忽略不存在的）
-          scripts/config -d CONFIG_VENDOR_QTI_KERNEL 2>/dev/null; true
-          scripts/config -d CONFIG_VENDOR_QCOM_KERNEL 2>/dev/null; true
-          scripts/config -d CONFIG_VENDOR_XIAOMI_KERNEL 2>/dev/null; true
-
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
 
-          # 🔑 BTF 四件套
+          # BTF 配置
           scripts/config -e CONFIG_DEBUG_INFO
           scripts/config -e CONFIG_DEBUG_INFO_DWARF4
           scripts/config -e CONFIG_DEBUG_INFO_BTF
           scripts/config -d CONFIG_DEBUG_INFO_REDUCED
-
           scripts/config -d CONFIG_DEBUG_INFO_SPLIT
           scripts/config -d CONFIG_DEBUG_INFO_COMPRESSED
           scripts/config -d CONFIG_FTRACE
           scripts/config -d CONFIG_FUNCTION_TRACER
+          scripts/config -d CONFIG_VENDOR_QTI_KERNEL 2>/dev/null; true
+          scripts/config -d CONFIG_VENDOR_QCOM_KERNEL 2>/dev/null; true
+          scripts/config -d CONFIG_VENDOR_XIAOMI_KERNEL 2>/dev/null; true
 
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
 
@@ -59,13 +68,14 @@ jobs:
           cd kernel
           export CROSS_COMPILE=aarch64-linux-gnu-
           export ARCH=arm64
-          make -j$(nproc) Image dtbs 2>&1 | tail -500
+          export PAHOLE=/usr/local/bin/pahole
+          make -j$(nproc) Image dtbs 2>&1 | tail -300
 
       - name: Verify
         run: |
           cd kernel
-          echo "=== Image ===" && ls -lh arch/arm64/boot/Image 2>/dev/null || echo "No Image"
-          echo "=== vmlinux ===" && ls -lh vmlinux 2>/dev/null || echo "No vmlinux"
+          echo "=== Image ===" && ls -lh arch/arm64/boot/Image
+          echo "=== vmlinux ===" && ls -lh vmlinux
 
       - name: Upload Image
         uses: actions/upload-artifact@v4
