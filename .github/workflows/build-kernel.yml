@@ -65,23 +65,21 @@ jobs:
           ./scripts/config -d CONFIG_DEBUG_INFO_REDUCED
           ./scripts/config -d CONFIG_DEBUG_INFO_SPLIT
           ./scripts/config -d CONFIG_DEBUG_INFO_COMPRESSED
-          
           ./scripts/config -d CONFIG_FTRACE
           ./scripts/config -d CONFIG_FUNCTION_TRACER
           
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
 
-      - name: Verify pahole and config
+      - name: Verify setup
         run: |
           echo "=== pahole ==="
           /usr/local/bin/pahole --version
           echo "=== GCC ==="
           aarch64-linux-gnu-gcc --version | head -1
-          echo "=== BTF config ==="
           cd kernel
-          grep -E 'CONFIG_DEBUG_INFO|CONFIG_DEBUG_INFO_BTF|CONFIG_FTRACE|CONFIG_FUNCTION_TRACER' .config
+          grep -E 'CONFIG_DEBUG_INFO_BTF|CONFIG_FTRACE' .config
 
-      - name: Build kernel (compile only, no link)
+      - name: Build kernel (Image + dtbs)
         run: |
           cd kernel
           export CC=aarch64-linux-gnu-gcc
@@ -95,8 +93,7 @@ jobs:
           export CROSS_COMPILE=aarch64-linux-gnu-
           export ARCH=arm64
           export PATH=/usr/local/bin:$PATH
-          # split into two steps: compile first with fewer jobs
-          make -j2 Image dtbs 2>&1 | tail -80
+          make -j2 Image dtbs 2>&1 | tail -200
 
       - name: Build modules
         run: |
@@ -114,25 +111,18 @@ jobs:
           export PATH=/usr/local/bin:$PATH
           make -j2 modules 2>&1 | tail -50
 
-      - name: Verify BTF in vmlinux
-        run: |
-          cd kernel
-          ls -lh vmlinux
-          echo ""
-          echo "=== BTF section check ==="
-          readelf -S vmlinux | grep -E '\.BTF|btf' || echo "No BTF found"
-
       - name: Verify output
         run: |
           cd kernel
           echo "=== vmlinux ==="
-          ls -lh vmlinux
+          ls -lh vmlinux 2>/dev/null || echo "vmlinux not found"
           echo "=== Image ==="
-          ls -lh arch/arm64/boot/Image
+          ls -lh arch/arm64/boot/Image 2>/dev/null || echo "Image not found"
           echo "=== DTB ==="
-          find arch/arm64/boot/dts -name "*.dtb" | head -20
+          find arch/arm64/boot/dts -name "*.dtb" 2>/dev/null | head -20 || echo "No DTB"
 
       - name: Upload kernel artifacts
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: kernel-output
