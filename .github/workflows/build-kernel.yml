@@ -22,15 +22,19 @@ jobs:
 
       - name: Build pahole from source
         run: |
+          # 先卸载系统自带的
+          sudo apt-get remove -y pahole dwarves 2>/dev/null; true
           git clone --depth=1 https://git.kernel.org/pub/scm/devel/pahole/pahole.git
           cd pahole
           mkdir build && cd build
-          cmake -DCMAKE_INSTALL_PREFIX=/usr/local ..
+          cmake -DCMAKE_INSTALL_PREFIX=/usr ..
           make -j$(nproc)
           sudo make install
           sudo ldconfig
-          which pahole
+          echo "=== pahole version ==="
           pahole --version
+          echo "=== pahole location ==="
+          which pahole
 
       - name: Clone kernel source
         run: |
@@ -45,10 +49,8 @@ jobs:
         run: |
           cd kernel
           cp kernel.config .config
-
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
 
-          # BTF 配置
           scripts/config -e CONFIG_DEBUG_INFO
           scripts/config -e CONFIG_DEBUG_INFO_DWARF4
           scripts/config -e CONFIG_DEBUG_INFO_BTF
@@ -68,7 +70,8 @@ jobs:
           cd kernel
           export CROSS_COMPILE=aarch64-linux-gnu-
           export ARCH=arm64
-          export PAHOLE=/usr/local/bin/pahole
+          # 确认用的是新 pahole
+          echo "Using pahole: $(which pahole) ($(pahole --version))"
           make -j$(nproc) Image dtbs 2>&1 | tail -300
 
       - name: Verify
