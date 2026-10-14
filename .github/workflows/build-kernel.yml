@@ -30,24 +30,29 @@ jobs:
             python3 \
             pkg-config \
             zlib1g-dev \
-            libbpf-dev \
-            linux-tools-common \
-            linux-tools-generic
+            libbpf-dev
 
-      - name: Build pahole v1.22 (using Makefile)
+      - name: Build pahole v1.22 (CMake from source)
         run: |
           apt-get remove -y dwarves || true
           
+          # 升级 CMake 到 3.20（从源码编译）
+          git clone -b v3.20.6 --depth=1 https://github.com/Kitware/CMake.git /tmp/cmake-src
+          cd /tmp/cmake-src
+          ./bootstrap --prefix=/usr/local --parallel=$(nproc)
+          make -j$(nproc)
+          make install
+          cmake --version
+          
+          # 编译 dwarves
           git clone -b v1.22 --depth=1 https://github.com/acmel/dwarves.git /tmp/dwarves
           cd /tmp/dwarves
-          
-          # 用传统 Makefile，不依赖 CMake
+          mkdir build && cd build
+          cmake -DCMAKE_INSTALL_PREFIX=/usr/local ..
           make -j$(nproc)
-          make install PREFIX=/usr/local
+          make install
           
           ldconfig
-          
-          echo "=== pahole version ==="
           /usr/local/bin/pahole --version
 
       - name: Clone kernel source
@@ -76,6 +81,8 @@ jobs:
 
       - name: Verify pahole and config
         run: |
+          echo "=== cmake ==="
+          cmake --version
           echo "=== pahole ==="
           /usr/local/bin/pahole --version
           which pahole
