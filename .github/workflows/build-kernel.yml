@@ -7,66 +7,53 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 120
-    container:
-      image: ubuntu:22.04
 
     steps:
-      - name: Install build dependencies
+      - name: Install dependencies
         run: |
-          apt-get update
-          DEBIAN_FRONTEND=noninteractive apt-get install -y \
-            flex bison \
-            build-essential \
-            gcc-aarch64-linux-gnu \
-            libelf-dev \
-            libssl-dev \
-            libdw-dev \
-            cpio \
-            git \
-            curl \
-            ca-certificates \
-            python3 \
-            pkg-config \
-            zlib1g-dev \
-            binutils-aarch64-linux-gnu \
-            cmake
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            flex bison build-essential gcc-aarch64-linux-gnu \
+            libelf-dev libssl-dev libdw-dev cpio git curl \
+            ca-certificates python3 pkg-config zlib1g-dev \
+            binutils-aarch64-linux-gnu cmake
 
-      - name: Build pahole v1.20
+      - name: Build pahole (static linked)
         run: |
           git clone -b v1.20 --depth=1 https://github.com/acmel/dwarves.git /tmp/dwarves
           cd /tmp/dwarves
           mkdir build && cd build
-          cmake -DCMAKE_INSTALL_PREFIX=/usr/local ..
+          cmake -DCMAKE_INSTALL_PREFIX=/usr/local \
+                -DBUILD_SHARED_LIBS=OFF \
+                -DCMAKE_EXE_LINKER_FLAGS="-static" \
+                ..
           make -j$(nproc)
-          make install
-          ldconfig  # ← 关键！刷新动态库缓存
-          echo "/usr/local/lib" >> /etc/ld.so.conf.d/local.conf  # ← 确保路径被识别
-          ldconfig  # ← 再刷一次
+          sudo make install
+          
+          # 验证：静态链接不依赖 .so
+          ldd /usr/local/bin/pahole 2>&1 || true
           /usr/local/bin/pahole --version
 
       - name: Clone kernel source
         run: |
           git clone --depth=1 -b main https://github.com/ikun-1145141/android_kernel_xiaomi_sm8350_star.git kernel
 
-      - name: Fetch device kernel config
+      - name: Fetch config
         run: |
           cd kernel
           curl -fsSL -o kernel.config https://raw.githubusercontent.com/xinyu-candy/android_kernel_xiaomi_sm8350_star/venus-5.10bpf/kernel.config
 
-      - name: Apply config and disable vendor modules
+      - name: Configure kernel
         run: |
           cd kernel
           cp kernel.config .config
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
           
-          # 禁用所有 vendor 模块（避免 link 冲突）
           ./scripts/config -d CONFIG_VENDOR_QTI_KERNEL
           ./scripts/config -d CONFIG_VENDOR_QCOM_KERNEL
           ./scripts/config -d CONFIG_VENDOR_XIAOMI_KERNEL
-          
-          # 启用 BTF
           ./scripts/config -e CONFIG_DEBUG_INFO
           ./scripts/config -e CONFIG_DEBUG_INFO_DWARF4
           ./scripts/config -e CONFIG_DEBUG_INFO_BTF
@@ -78,60 +65,15 @@ jobs:
           
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
 
-      - name: Verify setup
-        run: |
-          echo "=== pahole ==="
-          /usr/local/bin/pahole --version
-          echo "=== GCC ==="
-          aarch64-linux-gnu-gcc --version | head -1
-          cd kernel
-          grep -E 'CONFIG_DEBUG_INFO_BTF|CONFIG_FTRACE|VENDOR' .config || true
-
-      - name: Build kernel (Image + dtbs)
+      - name: Build kernel
         run: |
           cd kernel
-          export CC=aarch64-linux-gnu-gcc
-          export LD=aarch64-linux-gnu-ld
-          export AR=aarch64-linux-gnu-ar
-          export NM=aarch64-linux-gnu-nm
-          export OBJCOPY=aarch64-linux-gnu-objcopy
-          export OBJDUMP=aarch64-linux-gnu-objdump
-          export READELF=aarch64-linux-gnu-readelf
-          export STRIP=aarch64-linux-gnu-strip
           export CROSS_COMPILE=aarch64-linux-gnu-
           export ARCH=arm64
           export PATH=/usr/local/bin:$PATH
-          export LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH  # ← 关键！让 pahole 找到库
-          make -j2 Image dtbs 2>&1 | tail -200
+          make -j$(nproc) Image dtbs 2>&1 | tail -300
 
-      - name: Build modules
-        run: |
-          cd kernel
-          export CC=aarch64-linux-gnu-gcc
-          export LD=aarch64-linux-gnu-ld
-          export AR=aarch64-linux-gnu-ar
-          export NM=aarch64-linux-gnu-nm
-          export OBJCOPY=aarch64-linux-gnu-objcopy
-          export OBJDUMP=aarch64-linux-gnu-objdump
-          export READELF=aarch64-linux-gnu-readelf
-          export STRIP=aarch64-linux-gnu-strip
-          export CROSS_COMPILE=aarch64-linux-gnu-
-          export ARCH=arm64
-          export PATH=/usr/local/bin:$PATH
-          export LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH  # ← 同样加上
-          make -j2 modules 2>&1 | tail -50
-
-      - name: Verify output
-        run: |
-          cd kernel
-          echo "=== vmlinux ==="
-          ls -lh vmlinux 2>/dev/null || echo "vmlinux not found"
-          echo "=== Image ==="
-          ls -lh arch/arm64/boot/Image 2>/dev/null || echo "Image not found"
-          echo "=== DTB ==="
-          find arch/arm64/boot/dts -name "*.dtb" 2>/dev/null | head -20 || echo "No DTB"
-
-      - name: Upload kernel artifacts
+      - name: Upload artifacts
         if: success()
         uses: actions/upload-artifact@v4
         with:
