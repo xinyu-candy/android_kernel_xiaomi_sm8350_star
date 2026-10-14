@@ -23,33 +23,32 @@ jobs:
             libelf-dev \
             libssl-dev \
             libdw-dev \
-            cmake \
             cpio \
             git \
             curl \
             ca-certificates \
             python3 \
             pkg-config \
-            zlib1g-dev
+            zlib1g-dev \
+            libbpf-dev \
+            linux-tools-common \
+            linux-tools-generic
 
-      - name: Build pahole v1.22
+      - name: Build pahole v1.22 (using Makefile)
         run: |
           apt-get remove -y dwarves || true
           
-          # 升级 CMake 到 3.16+（v1.22 需要）
-          curl -fsSL -o /tmp/cmake.sh https://github.com/Kitware/CMake/releases/download/v3.16.9/cmake-3.16.9-Linux-x86_64.sh
-          bash /tmp/cmake.sh --prefix=/usr/local --skip-license
-          
-          # 编译 pahole
           git clone -b v1.22 --depth=1 https://github.com/acmel/dwarves.git /tmp/dwarves
           cd /tmp/dwarves
-          mkdir build && cd build
-          cmake -DCMAKE_INSTALL_PREFIX=/usr/local ..
+          
+          # 用传统 Makefile，不依赖 CMake
           make -j$(nproc)
-          make install
+          make install PREFIX=/usr/local
           
           ldconfig
-          pahole --version
+          
+          echo "=== pahole version ==="
+          /usr/local/bin/pahole --version
 
       - name: Clone kernel source
         run: |
@@ -77,19 +76,23 @@ jobs:
 
       - name: Verify pahole and config
         run: |
-          pahole --version
+          echo "=== pahole ==="
+          /usr/local/bin/pahole --version
           which pahole
+          echo "=== BTF config ==="
           cd kernel
           grep -E 'CONFIG_DEBUG_INFO|CONFIG_DEBUG_INFO_BTF' .config
 
       - name: Build kernel (Image + dtbs)
         run: |
           cd kernel
+          export PATH=/usr/local/bin:$PATH
           make -j$(nproc) ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- Image dtbs
 
       - name: Build modules
         run: |
           cd kernel
+          export PATH=/usr/local/bin:$PATH
           make -j$(nproc) ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- modules
 
       - name: Verify BTF in vmlinux
