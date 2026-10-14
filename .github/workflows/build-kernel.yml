@@ -31,9 +31,6 @@ jobs:
                 ..
           make -j$(nproc)
           sudo make install
-          
-          # 验证：静态链接不依赖 .so
-          ldd /usr/local/bin/pahole 2>&1 || true
           /usr/local/bin/pahole --version
 
       - name: Clone kernel source
@@ -73,13 +70,33 @@ jobs:
           export PATH=/usr/local/bin:$PATH
           make -j$(nproc) Image dtbs 2>&1 | tail -300
 
-      - name: Upload artifacts
-        if: success()
+      - name: Verify output
+        run: |
+          cd kernel
+          echo "=== Image ==="
+          ls -lh arch/arm64/boot/Image
+          echo "=== vmlinux ==="
+          ls -lh vmlinux
+          echo "=== DTBs ==="
+          find arch/arm64/boot/dts -name "*.dtb" | head -20
+
+      - name: Upload Image
         uses: actions/upload-artifact@v4
         with:
-          name: kernel-output
-          path: |
-            kernel/arch/arm64/boot/Image
-            kernel/arch/arm64/boot/dts/**/*.dtb
-            kernel/vmlinux
+          name: kernel-image
+          path: kernel/arch/arm64/boot/Image
+          retention-days: 7
+
+      - name: Upload vmlinux
+        uses: actions/upload-artifact@v4
+        with:
+          name: kernel-vmlinux
+          path: kernel/vmlinux
+          retention-days: 7
+
+      - name: Upload DTBs
+        uses: actions/upload-artifact@v4
+        with:
+          name: kernel-dtbs
+          path: kernel/arch/arm64/boot/dts/**/*.dtb
           retention-days: 7
