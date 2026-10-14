@@ -30,13 +30,18 @@ jobs:
             python3 \
             pkg-config \
             zlib1g-dev \
-            dwarves \
             binutils-aarch64-linux-gnu
 
-      - name: Verify pahole
+      - name: Build pahole v1.21
         run: |
-          pahole --version
-          which pahole
+          git clone -b v1.21 --depth=1 https://github.com/acmel/dwarves.git /tmp/dwarves
+          cd /tmp/dwarves
+          mkdir build && cd build
+          cmake -DCMAKE_INSTALL_PREFIX=/usr/local ..
+          make -j$(nproc)
+          make install
+          ldconfig
+          /usr/local/bin/pahole --version
 
       - name: Clone kernel source
         run: |
@@ -65,7 +70,7 @@ jobs:
       - name: Verify pahole and config
         run: |
           echo "=== pahole ==="
-          pahole --version
+          /usr/local/bin/pahole --version
           echo "=== GCC ==="
           aarch64-linux-gnu-gcc --version | head -1
           echo "=== BTF config ==="
@@ -85,6 +90,7 @@ jobs:
           export STRIP=aarch64-linux-gnu-strip
           export CROSS_COMPILE=aarch64-linux-gnu-
           export ARCH=arm64
+          export PATH=/usr/local/bin:$PATH
           make -j$(nproc) Image dtbs 2>&1 | tail -80
 
       - name: Build modules
@@ -100,6 +106,7 @@ jobs:
           export STRIP=aarch64-linux-gnu-strip
           export CROSS_COMPILE=aarch64-linux-gnu-
           export ARCH=arm64
+          export PATH=/usr/local/bin:$PATH
           make -j$(nproc) modules 2>&1 | tail -50
 
       - name: Verify BTF in vmlinux
