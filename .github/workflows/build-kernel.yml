@@ -30,7 +30,8 @@ jobs:
             python3 \
             pkg-config \
             zlib1g-dev \
-            dwarves
+            dwarves \
+            binutils-aarch64-linux-gnu
 
       - name: Verify pahole
         run: |
@@ -74,12 +75,32 @@ jobs:
       - name: Build kernel (Image + dtbs)
         run: |
           cd kernel
-          make -j$(nproc) ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- Image dtbs 2>&1 | tail -50
+          export CC=aarch64-linux-gnu-gcc
+          export LD=aarch64-linux-gnu-ld
+          export AR=aarch64-linux-gnu-ar
+          export NM=aarch64-linux-gnu-nm
+          export OBJCOPY=aarch64-linux-gnu-objcopy
+          export OBJDUMP=aarch64-linux-gnu-objdump
+          export READELF=aarch64-linux-gnu-readelf
+          export STRIP=aarch64-linux-gnu-strip
+          export CROSS_COMPILE=aarch64-linux-gnu-
+          export ARCH=arm64
+          make -j$(nproc) Image dtbs 2>&1 | tail -80
 
       - name: Build modules
         run: |
           cd kernel
-          make -j$(nproc) ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- modules 2>&1 | tail -50
+          export CC=aarch64-linux-gnu-gcc
+          export LD=aarch64-linux-gnu-ld
+          export AR=aarch64-linux-gnu-ar
+          export NM=aarch64-linux-gnu-nm
+          export OBJCOPY=aarch64-linux-gnu-objcopy
+          export OBJDUMP=aarch64-linux-gnu-objdump
+          export READELF=aarch64-linux-gnu-readelf
+          export STRIP=aarch64-linux-gnu-strip
+          export CROSS_COMPILE=aarch64-linux-gnu-
+          export ARCH=arm64
+          make -j$(nproc) modules 2>&1 | tail -50
 
       - name: Verify BTF in vmlinux
         run: |
