@@ -19,9 +19,9 @@ jobs:
             libelf-dev libssl-dev libdw-dev cpio git curl \
             ca-certificates python3 pkg-config zlib1g-dev \
             binutils-aarch64-linux-gnu \
-            dwarves
+            pahole
 
-      - name: Check pahole
+      - name: Verify pahole
         run: |
           pahole --version
           which pahole
