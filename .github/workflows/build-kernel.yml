@@ -28,7 +28,7 @@ jobs:
 
       - name: Downgrade -Werror
         run: |
-          find . \( -name 'Makefile' -o -name '*.mk' -o -name 'Kbuild' \) -exec sed -i 's/-Werror=/-Wno-error=/g; s/-Werror/-Wno-error/g' {} +
+         find . \( -name 'Makefile' -o -name '*.mk' -o -name 'Kbuild' \) -exec sed -i 's/-Werror=/-Wno-error=/g; s/-Werror/-Wno-error/g' {} +
           
       - name: Show kernel version
         run: head -5 Makefile
