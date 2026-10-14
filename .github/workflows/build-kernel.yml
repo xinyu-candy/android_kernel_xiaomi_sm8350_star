@@ -28,13 +28,28 @@ jobs:
             git \
             curl \
             ca-certificates \
-            dwarves \
-            python3
+            python3 \
+            pkg-config \
+            zlib1g-dev
 
-      - name: Verify pahole version
+      - name: Build pahole v1.22
         run: |
+          apt-get remove -y dwarves || true
+          
+          # 升级 CMake 到 3.16+（v1.22 需要）
+          curl -fsSL -o /tmp/cmake.sh https://github.com/Kitware/CMake/releases/download/v3.16.9/cmake-3.16.9-Linux-x86_64.sh
+          bash /tmp/cmake.sh --prefix=/usr/local --skip-license
+          
+          # 编译 pahole
+          git clone -b v1.22 --depth=1 https://github.com/acmel/dwarves.git /tmp/dwarves
+          cd /tmp/dwarves
+          mkdir build && cd build
+          cmake -DCMAKE_INSTALL_PREFIX=/usr/local ..
+          make -j$(nproc)
+          make install
+          
+          ldconfig
           pahole --version
-          which pahole
 
       - name: Clone kernel source
         run: |
@@ -45,20 +60,12 @@ jobs:
           cd kernel
           curl -fsSL -o kernel.config https://raw.githubusercontent.com/xinyu-candy/android_kernel_xiaomi_sm8350_star/venus-5.10bpf/kernel.config
 
-      - name: Validate kernel.config
-        run: |
-          cd kernel
-          wc -l kernel.config
-          tail -10 kernel.config
-          ls -lh kernel.config
-
       - name: Apply config and enable BTF
         run: |
           cd kernel
           cp kernel.config .config
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
           
-          # 只开核心 BTF
           ./scripts/config -e CONFIG_DEBUG_INFO
           ./scripts/config -e CONFIG_DEBUG_INFO_DWARF4
           ./scripts/config -e CONFIG_DEBUG_INFO_BTF
@@ -68,8 +75,10 @@ jobs:
           
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
 
-      - name: Check BTF config
+      - name: Verify pahole and config
         run: |
+          pahole --version
+          which pahole
           cd kernel
           grep -E 'CONFIG_DEBUG_INFO|CONFIG_DEBUG_INFO_BTF' .config
 
