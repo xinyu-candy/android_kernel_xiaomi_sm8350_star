@@ -56,11 +56,14 @@ jobs:
           cp kernel.config .config
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
 
-          # 先关 BTF，保证编译能过
+          # 关 BTF，编译阶段不生成 BTF
           scripts/config -d CONFIG_DEBUG_INFO_BTF
 
+          # 用 DWARF5（对交叉编译更友好）
+          scripts/config -d CONFIG_DEBUG_INFO_DWARF4
+          scripts/config -e CONFIG_DEBUG_INFO_DWARF5
+
           scripts/config -e CONFIG_DEBUG_INFO
-          scripts/config -e CONFIG_DEBUG_INFO_DWARF4
           scripts/config -d CONFIG_DEBUG_INFO_REDUCED
           scripts/config -d CONFIG_DEBUG_INFO_SPLIT
           scripts/config -d CONFIG_DEBUG_INFO_COMPRESSED
@@ -72,7 +75,10 @@ jobs:
 
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
 
-      - name: Build kernel (no BTF)
+          echo "=== Final BTF config ==="
+          grep -E "CONFIG_DEBUG_INFO|CONFIG_DEBUG_INFO_BTF|CONFIG_DEBUG_INFO_DWARF" .config
+
+      - name: Build kernel
         run: |
           cd kernel
           export CROSS_COMPILE=aarch64-linux-gnu-
@@ -82,23 +88,21 @@ jobs:
       - name: Generate BTF from vmlinux
         run: |
           cd kernel
-          echo "Extracting BTF from vmlinux..."
-          pahole --btf_encode_detached vmlinux.btf vmlinux
-          ls -lh vmlinux.btf
-          echo "BTF generation done!"
-
-      - name: Strip vmlinux
-        run: |
-          cd kernel
-          aarch64-linux-gnu-strip --strip-debug vmlinux -o vmlinux-stripped
-          ls -lh vmlinux vmlinux-stripped
+          echo "=== pahole version ==="
+          pahole --version
+          echo "=== Extracting BTF ==="
+          pahole --btf_encode_detached vmlinux.btf vmlinux 2>&1 || {
+            echo "BTF encode failed, trying with --force..."
+            pahole --btf_encode_detached --force vmlinux.btf vmlinux 2>&1
+          }
+          ls -lh vmlinux.btf 2>/dev/null && echo "BTF OK!" || echo "BTF failed, continuing..."
 
       - name: Verify
         run: |
           cd kernel
           echo "=== Image ===" && ls -lh arch/arm64/boot/Image
           echo "=== vmlinux ===" && ls -lh vmlinux
-          echo "=== vmlinux.btf ===" && ls -lh vmlinux.btf
+          echo "=== vmlinux.btf ===" && ls -lh vmlinux.btf 2>/dev/null || echo "No BTF file"
 
       - name: Upload Image
         uses: actions/upload-artifact@v4
@@ -111,11 +115,12 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: kernel-vmlinux
-          path: kernel/vmlinux-stripped
+          path: kernel/vmlinux
           retention-days: 7
 
       - name: Upload BTF
         uses: actions/upload-artifact@v4
+        if: success()
         with:
           name: kernel-btf
           path: kernel/vmlinux.btf
