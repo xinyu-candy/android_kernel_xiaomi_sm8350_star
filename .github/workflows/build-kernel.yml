@@ -60,20 +60,25 @@ jobs:
 
       - name: Make boot.img
         run: |
-          make -C tools/bootimg
-          ./tools/bootimg/mkbootimg \
-            --kernel arch/arm64/boot/Image \
-            --base "$KERNEL_BASE" \
-            --page_size "$PAGE_SIZE" \
-            --os_version 12 \
-            --cmdline "$CMDLINE" \
-            -o boot.img
+          python3 - <<'PYEOF'
+          import struct, os
+          kpath = 'arch/arm64/boot/Image'
+          out = 'boot.img'
+          kbase = 0x100000
+          cpage = 4096
+          cmdline = os.environ['CMDLINE']
+          kdata = open(kpath, 'rb').read()
+          def pad(n, p): return (n + p - 1) // p * p
+          ksize = pad(len(kdata), cpage)
+          hdr = b'ANDROID!'
+          hdr += struct.pack('<IIII', kbase, 0, 0, 0x1200000)
+          hdr += struct.pack('<I', cpage)
+          hdr += b'star'.ljust(16, b'\0')
+          hdr += cmdline.encode('utf-8')[:511].ljust(512, b'\0')
+          hdr += struct.pack('<I', 0) + b'\0' * 8
+          assert len(hdr) == 568
+          data = hdr.ljust(cpage, b'\0') + kdata.ljust(ksize, b'\0')
+          open(out, 'wb').write(data)
+          print('boot.img:', len(data), 'bytes; kernel:', len(kdata))
+          PYEOF
           ls -lh boot.img
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: star-btf
-          path:
-            arch/arm64/boot/Image
-            boot.img
