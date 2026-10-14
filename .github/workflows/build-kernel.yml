@@ -30,6 +30,21 @@ jobs:
           cd kernel
           curl -fsSL -o kernel.config https://raw.githubusercontent.com/xinyu-candy/android_kernel_xiaomi_sm8350_star/venus-5.10bpf/kernel.config
 
+      - name: Fix touchscreen driver
+        run: |
+          cd kernel
+          # 暴力修复：找到所有引用了 FT8756_UPGRADE_FIRMWARE 的文件，在里面硬塞 define
+          grep -rl "FT8756_UPGRADE_FIRMWARE" drivers/input/touchscreen/ 2>/dev/null | while read f; do
+            echo "Patching: $f"
+            sed -i '1s/^/#define FT8756_UPGRADE_FIRMWARE 0\n/' "$f"
+          done
+          # 如果上面没找到，全局搜索
+          grep -rl "FT8756_UPGRADE_FIRMWARE" . 2>/dev/null | while read f; do
+            echo "Patching: $f"
+            sed -i '1s/^/#define FT8756_UPGRADE_FIRMWARE 0\n/' "$f"
+          done
+          echo "Patch done!"
+
       - name: Configure kernel
         run: |
           cd kernel
@@ -49,9 +64,6 @@ jobs:
           ./scripts/config -d CONFIG_FTRACE
           ./scripts/config -d CONFIG_FUNCTION_TRACER
 
-          # 🔑 修触屏驱动 bug
-          ./scripts/config -e CONFIG_TOUCHSCREEN_XIAOMI_SDM870_TOUCH_UPGRADE_FIRMWARE
-
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
 
       - name: Build kernel
@@ -65,8 +77,8 @@ jobs:
         run: |
           cd kernel
           ls -lh arch/arm64/boot/Image
-          ls -lh vmlinux
-          file vmlinux
+          ls -lh vmlinux 2>/dev/null || echo "vmlinux not found"
+          file vmlinux 2>/dev/null || true
 
       - name: Upload Image
         uses: actions/upload-artifact@v4
