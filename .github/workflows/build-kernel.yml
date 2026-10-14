@@ -81,7 +81,7 @@ jobs:
           cd kernel
           grep -E 'CONFIG_DEBUG_INFO|CONFIG_DEBUG_INFO_BTF|CONFIG_FTRACE|CONFIG_FUNCTION_TRACER' .config
 
-      - name: Build kernel (Image + dtbs)
+      - name: Build kernel (compile only, no link)
         run: |
           cd kernel
           export CC=aarch64-linux-gnu-gcc
@@ -95,7 +95,8 @@ jobs:
           export CROSS_COMPILE=aarch64-linux-gnu-
           export ARCH=arm64
           export PATH=/usr/local/bin:$PATH
-          make -j$(nproc) Image dtbs 2>&1 | tail -80
+          # split into two steps: compile first with fewer jobs
+          make -j2 Image dtbs 2>&1 | tail -80
 
       - name: Build modules
         run: |
@@ -111,7 +112,7 @@ jobs:
           export CROSS_COMPILE=aarch64-linux-gnu-
           export ARCH=arm64
           export PATH=/usr/local/bin:$PATH
-          make -j$(nproc) modules 2>&1 | tail -50
+          make -j2 modules 2>&1 | tail -50
 
       - name: Verify BTF in vmlinux
         run: |
