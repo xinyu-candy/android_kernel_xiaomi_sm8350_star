@@ -20,9 +20,9 @@ jobs:
             ca-certificates python3 pkg-config zlib1g-dev \
             binutils-aarch64-linux-gnu cmake
 
-      - name: Setup swap (4GB)
+      - name: Setup swap (6GB)
         run: |
-          sudo fallocate -l 4G /swapfile
+          sudo fallocate -l 6G /swapfile
           sudo chmod 600 /swapfile
           sudo mkswap /swapfile
           sudo swapon /swapfile
@@ -38,6 +38,7 @@ jobs:
           make -j$(nproc)
           sudo make install
           sudo ldconfig
+          which pahole
           pahole --version
 
       - name: Clone kernel source
@@ -55,9 +56,11 @@ jobs:
           cp kernel.config .config
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
 
+          # 先关 BTF，保证编译能过
+          scripts/config -d CONFIG_DEBUG_INFO_BTF
+
           scripts/config -e CONFIG_DEBUG_INFO
           scripts/config -e CONFIG_DEBUG_INFO_DWARF4
-          scripts/config -e CONFIG_DEBUG_INFO_BTF
           scripts/config -d CONFIG_DEBUG_INFO_REDUCED
           scripts/config -d CONFIG_DEBUG_INFO_SPLIT
           scripts/config -d CONFIG_DEBUG_INFO_COMPRESSED
@@ -69,19 +72,33 @@ jobs:
 
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
 
-      - name: Build kernel
+      - name: Build kernel (no BTF)
         run: |
           cd kernel
           export CROSS_COMPILE=aarch64-linux-gnu-
           export ARCH=arm64
-          # 编译用多线程，链接用单线程避免 OOM
-          make -j$(nproc) Image dtbs KBUILD_LDFLAGS_MODULE= LD="aarch64-linux-gnu-ld" 2>&1 | tail -300
+          make -j$(nproc) Image dtbs vmlinux 2>&1 | tail -300
+
+      - name: Generate BTF from vmlinux
+        run: |
+          cd kernel
+          echo "Extracting BTF from vmlinux..."
+          pahole --btf_encode_detached vmlinux.btf vmlinux
+          ls -lh vmlinux.btf
+          echo "BTF generation done!"
+
+      - name: Strip vmlinux
+        run: |
+          cd kernel
+          aarch64-linux-gnu-strip --strip-debug vmlinux -o vmlinux-stripped
+          ls -lh vmlinux vmlinux-stripped
 
       - name: Verify
         run: |
           cd kernel
           echo "=== Image ===" && ls -lh arch/arm64/boot/Image
           echo "=== vmlinux ===" && ls -lh vmlinux
+          echo "=== vmlinux.btf ===" && ls -lh vmlinux.btf
 
       - name: Upload Image
         uses: actions/upload-artifact@v4
@@ -94,7 +111,14 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: kernel-vmlinux
-          path: kernel/vmlinux
+          path: kernel/vmlinux-stripped
+          retention-days: 7
+
+      - name: Upload BTF
+        uses: actions/upload-artifact@v4
+        with:
+          name: kernel-btf
+          path: kernel/vmlinux.btf
           retention-days: 7
 
       - name: Upload DTBs
