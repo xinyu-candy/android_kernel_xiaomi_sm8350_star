@@ -29,10 +29,23 @@ jobs:
             libdw-dev \
             cmake \
             cpio \
-            git \
-            clang \
-            lld \
-            llvm
+            git
+
+      - name: Build pahole v1.22 (compatible with 5.4 kernel)
+        run: |
+          sudo apt-get remove -y dwarves || true
+          
+          git clone -b v1.22 --depth=1 https://github.com/acmel/dwarves.git /tmp/dwarves
+          cd /tmp/dwarves
+          mkdir build && cd build
+          cmake -DCMAKE_INSTALL_PREFIX=/usr/local ..
+          make -j$(nproc)
+          sudo make install
+          
+          export PATH=/usr/local/bin:$PATH
+          echo 'export PATH=/usr/local/bin:$PATH' >> $GITHUB_ENV
+          
+          pahole --version
 
       - name: Get kernel source
         uses: actions/checkout@v4
@@ -57,69 +70,66 @@ jobs:
           echo "=== File size ==="
           ls -lh kernel.config
 
-      - name: Apply config and enable BTF with LLVM
+      - name: Apply config and enable BTF (minimal for 5.4)
         run: |
           cd kernel
           cp kernel.config .config
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
           
-          # 开启 BTF
+          # 只开核心 BTF 选项
           ./scripts/config -e CONFIG_DEBUG_INFO
           ./scripts/config -e CONFIG_DEBUG_INFO_DWARF4
           ./scripts/config -e CONFIG_DEBUG_INFO_BTF
-          ./scripts/config -e CONFIG_DEBUG_INFO_REDUCED
-          ./scripts/config -d CONFIG_DEBUG_INFO_SPLIT
           
-          # 关键：强制用 LLVM 工具链生成 BTF，而非 pahole
-          ./scripts/config -e CONFIG_PAHOLE_HAS_SPLIT_BTF
-          ./scripts/config -e CONFIG_PAHOLE_HAS_BTF_TAG
-          ./scripts/config -e CONFIG_DEBUG_INFO_BTF_MODULES
+          # 显式关闭可能不兼容的选项
+          ./scripts/config -d CONFIG_DEBUG_INFO_REDUCED
+          ./scripts/config -d CONFIG_DEBUG_INFO_SPLIT
+          ./scripts/config -d CONFIG_DEBUG_INFO_COMPRESSED
+          ./scripts/config -d CONFIG_DEBUG_INFO_BTF_MODULES
           
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
 
-      - name: Verify config
+      - name: Verify pahole and BTF config
         run: |
+          echo "=== pahole version ==="
+          pahole --version
+          echo "=== pahole path ==="
+          which pahole
+          echo "=== BTF settings ==="
           cd kernel
-          grep -E 'CONFIG_DEBUG_INFO|CONFIG_DEBUG_INFO_BTF|CONFIG_PAHOLE' .config
+          grep -E 'CONFIG_DEBUG_INFO|CONFIG_DEBUG_INFO_BTF' .config
 
-      - name: Build kernel with LLVM
+      - name: Build kernel
         run: |
           cd kernel
-          export LLVM=1
-          export LLVM_IAS=1
-          make -j$(nproc) \
-            ARCH=arm64 \
-            CROSS_COMPILE=aarch64-linux-gnu- \
-            LLVM=1 \
-            LLVM_IAS=1 \
-            Image dtbs
+          export PATH=/usr/local/bin:$PATH
+          make -j$(nproc) ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- Image dtbs 2>&1 | tee build.log
 
-      - name: Build modules with LLVM
+      - name: Build modules
         run: |
           cd kernel
-          export LLVM=1
-          export LLVM_IAS=1
-          make -j$(nproc) \
-            ARCH=arm64 \
-            CROSS_COMPILE=aarch64-linux-gnu- \
-            LLVM=1 \
-            LLVM_IAS=1 \
-            modules
+          export PATH=/usr/local/bin:$PATH
+          make -j$(nproc) ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- modules 2>&1 | tee modules.log
+
+      - name: Verify BTF in vmlinux
+        run: |
+          cd kernel
+          echo "=== vmlinux ==="
+          ls -lh vmlinux
+          echo ""
+          echo "=== Looking for .BTF section ==="
+          readelf -S vmlinux | grep -i btf || echo "BTF section not found, checking build log..."
+          echo ""
+          echo "=== Build log last 50 lines ==="
+          tail -50 build.log
 
       - name: Verify output
         run: |
           cd kernel
           echo "=== vmlinux ==="
           ls -lh vmlinux
-          file vmlinux
-          echo ""
-          echo "=== BTF check ==="
-          bpftool btf dump file vmlinux format raw 2>/dev/null | head -5 || echo "Checking with readelf..."
-          readelf -S vmlinux 2>/dev/null | grep -i btf || echo "BTF section not found via readelf"
-          echo ""
           echo "=== Image ==="
           ls -lh arch/arm64/boot/Image
-          echo ""
           echo "=== DTB ==="
           find arch/arm64/boot/dts -name "*.dtb" | head -20
 
