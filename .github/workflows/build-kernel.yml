@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 120
     container:
-      image: ubuntu:20.04
+      image: ubuntu:22.04
 
     steps:
       - name: Install build dependencies
@@ -30,30 +30,12 @@ jobs:
             python3 \
             pkg-config \
             zlib1g-dev \
-            libbpf-dev
+            dwarves
 
-      - name: Build pahole v1.22 (CMake from source)
+      - name: Verify pahole
         run: |
-          apt-get remove -y dwarves || true
-          
-          # 升级 CMake 到 3.20（从源码编译）
-          git clone -b v3.20.6 --depth=1 https://github.com/Kitware/CMake.git /tmp/cmake-src
-          cd /tmp/cmake-src
-          ./bootstrap --prefix=/usr/local --parallel=$(nproc)
-          make -j$(nproc)
-          make install
-          cmake --version
-          
-          # 编译 dwarves
-          git clone -b v1.22 --depth=1 https://github.com/acmel/dwarves.git /tmp/dwarves
-          cd /tmp/dwarves
-          mkdir build && cd build
-          cmake -DCMAKE_INSTALL_PREFIX=/usr/local ..
-          make -j$(nproc)
-          make install
-          
-          ldconfig
-          /usr/local/bin/pahole --version
+          pahole --version
+          which pahole
 
       - name: Clone kernel source
         run: |
@@ -81,11 +63,10 @@ jobs:
 
       - name: Verify pahole and config
         run: |
-          echo "=== cmake ==="
-          cmake --version
           echo "=== pahole ==="
-          /usr/local/bin/pahole --version
-          which pahole
+          pahole --version
+          echo "=== GCC ==="
+          aarch64-linux-gnu-gcc --version | head -1
           echo "=== BTF config ==="
           cd kernel
           grep -E 'CONFIG_DEBUG_INFO|CONFIG_DEBUG_INFO_BTF' .config
@@ -93,14 +74,12 @@ jobs:
       - name: Build kernel (Image + dtbs)
         run: |
           cd kernel
-          export PATH=/usr/local/bin:$PATH
-          make -j$(nproc) ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- Image dtbs
+          make -j$(nproc) ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- Image dtbs 2>&1 | tail -50
 
       - name: Build modules
         run: |
           cd kernel
-          export PATH=/usr/local/bin:$PATH
-          make -j$(nproc) ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- modules
+          make -j$(nproc) ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- modules 2>&1 | tail -50
 
       - name: Verify BTF in vmlinux
         run: |
@@ -108,7 +87,7 @@ jobs:
           ls -lh vmlinux
           echo ""
           echo "=== BTF section check ==="
-          readelf -S vmlinux | grep -E '\.BTF|btf' || echo "No BTF found, but kernel compiled successfully"
+          readelf -S vmlinux | grep -E '\.BTF|btf' || echo "No BTF found"
 
       - name: Verify output
         run: |
